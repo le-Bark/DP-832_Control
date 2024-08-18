@@ -1,0 +1,10 @@
+__pycache__
+build
+Include
+Lib
+DP832_config.json
+.spec
+.cfg
+scripts
+DP832_ctrl.spec
+pyvenv.cfg

@@ -1,12 +1,36 @@
 import wx
 import string
-from DP382 import DP832
+from DP832 import DP832
 from setpCtrl import setpCtrl, setpValidator
+import os
+import json
 
-class Frame(wx.Frame):
+configFileName = "DP832_config.json"
+
+class controlConfig():
+    def __init__(self,filename):
+        self.filename = filename
+        self.config = {
+            "IP":"",
+            "test": 22
+        }
+
+    def readConfig(self):
+        if os.path.isfile(self.filename):
+            f = open(self.filename,"r")
+            readConfig = json.load(f)
+            for k in readConfig.keys():
+                if k in self.config.keys():
+                    self.config[k] = readConfig[k]
+    def writeConfig(self):
+        f = open(self.filename,"w")
+        json.dump(self.config,f)
+
+class Frame(wx.Frame,controlConfig):
     def __init__(self, title):
         frameStyle = wx.MINIMIZE_BOX | wx.SYSTEM_MENU | wx.CAPTION | wx.CLOSE_BOX | wx.CLIP_CHILDREN | wx.STAY_ON_TOP
         wx.Frame.__init__(self, None, title=title, pos=(150,150), size=(350,200), style=frameStyle)
+        controlConfig.__init__(self,configFileName)
         panel = wx.Panel(self)
         grid = wx.GridBagSizer(hgap=10,vgap=10)
         #grid.AddStretchSpacer()
@@ -76,29 +100,21 @@ class Frame(wx.Frame):
         self.CH3outpButton = wx.ToggleButton(panel,label="CH3")
         grid.Add(self.CH3outpButton,pos=wx.GBPosition(7,3),flag=measSizerFlags | wx.EXPAND)
 
-        #self.inctrl = wx.TextCtrl(panel,style=wx.TE_PROCESS_ENTER, validator=setpValidator(30))
-        #grid.Add(self.inctrl,pos=wx.GBPosition(8,1),flag=measSizerFlags | wx.EXPAND)
-        #self.outctrl = wx.TextCtrl(panel)
-        #grid.Add(self.outctrl,pos=wx.GBPosition(8,2),flag=measSizerFlags | wx.EXPAND)
-        #self.Bind(wx.EVT_TEXT,self.OnInCtrl,self.inctrl)
-        #self.Bind(wx.EVT_TEXT_ENTER,self.OnInCtrl2,self.inctrl)
-
-        #self.setpCtrl = setpCtrl(panel,30,size=wx.Size(110,23))
-        #self.setpCtrl = setpCtrl(panel,30)
-        #grid.Add(self.setpCtrl,pos=wx.GBPosition(8,3))
-
-
         self.menubar = wx.MenuBar()
         self.connectMenu = wx.Menu()
         self.menubar.Append(self.connectMenu,"Connect")
-        
+        self.configMenu = wx.Menu()
+        self.menubar.Append(self.configMenu,"Configure")
+
+        self.connectMenu.Bind(wx.EVT_MENU_OPEN,self.onConnect)
+        self.configMenu.Bind(wx.EVT_MENU_OPEN,self.onConfigure)
+
         self.SetMenuBar(self.menubar)
         
         grid.Add(0,0,pos=wx.GBPosition(8,4),flag=wx.ALIGN_CENTER_VERTICAL | wx.ALIGN_CENTER_HORIZONTAL)
         panel.SetSizer(grid)
         grid.Fit(self)
 
-        self.connectMenu.Bind(wx.EVT_MENU_OPEN,self.onConnect)
 
         self.meastimer = wx.Timer(self,-1)
         self.Bind(wx.EVT_TIMER, self.OnMeasTimer, self.meastimer)
@@ -121,22 +137,26 @@ class Frame(wx.Frame):
         self.psu = DP832()
 
     def onConnect(self,evt):
+        self.readConfig()
         if self.psu.connected:
             self.psu.disconnect()
         else:
-            self.psu.connect('TCPIP0::192.168.0.113::INSTR')        
+            self.psu.connect('TCPIP0::{}::INSTR'.format(self.config["IP"]))        
         if self.psu.connected:
             self.menubar.SetMenuLabel(0,"Disconnect")
             self.psu.readSetps()
             self.psu.readOutp()
             self.updateSetps()
             self.meastimer.Start(50)
-            #self.setptimer.Start(500)
             print("Connected")
         else:
             self.menubar.SetMenuLabel(0,"Connect")  
     
         #evt.Skip()
+
+    def onConfigure(self,evt):
+        dialog = ConfigPopup(self,0)
+        dialog.ShowModal()
 
     def OnMeasTimer(self,evt):
         if self.psu.connected == 0:
@@ -219,6 +239,45 @@ class Frame(wx.Frame):
         self.outctrl.SetValue(self.inctrl.Value)
     def OnInCtrl2(self,evt):
         self.outctrl.SetValue("asd")
+
+class ConfigPopup(wx.Dialog,controlConfig):
+    def __init__(self, parent, style):
+        wx.Dialog.__init__(self, parent, style,title="Instrument configuration")
+        controlConfig.__init__(self,configFileName)
+        self.panel = wx.Panel(self)
+        self.readConfig()
+        v1s = wx.BoxSizer(wx.VERTICAL)
+
+        h1s = wx.BoxSizer(wx.HORIZONTAL)
+        self.ipText = wx.StaticText(self.panel,-1,"IP : ")
+        h1s.Add(20,0)
+        h1s.Add(self.ipText)
+        self.ipTextctrl = wx.TextCtrl(self.panel)
+        self.ipTextctrl.Value = self.config["IP"]
+        h1s.Add(self.ipTextctrl)
+        h1s.Add(20,0)
+
+        v1s.Add(0,20)
+        v1s.Add(h1s)
+
+        self.okButton = wx.Button(self.panel, label="OK")
+        v1s.Add(self.okButton,1,wx.ALIGN_CENTER)
+
+        self.okButton.Bind(wx.EVT_BUTTON,self.onOk)
+
+        v1s.Add(0,20)
+
+        self.panel.SetSizer(v1s)
+        v1s.Fit(self)
+        self.Centre() 
+
+        self.Show()
+        
+    def onOk(self,evt):
+        self.config["IP"] = self.ipTextctrl.Value
+        self.writeConfig()
+        self.Close()
+        
 
 app = wx.App(redirect=False)
 top = Frame("DP832 Control")
